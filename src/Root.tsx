@@ -1,3 +1,7 @@
+import { useState, useEffect } from "react";
+import { PokeAPI } from "./api";
+
+
 type Props = {
   id: number;
   image: string;
@@ -6,90 +10,195 @@ type Props = {
 };
 
 function Card(props: Props) {
-  const typeColor = getTypeColor(props.types[0]);
+  const primaryType = props.types[0];
+  const cardBg = getCardBackground(primaryType);
+  const headerGradient = getHeaderGradient(primaryType);
 
   return (
-    /* Contenitore con larghezza fissa e altezza automatica per evitare spazi vuoti */
-    <div className="w-72 p-2.5 bg-yellow-400 rounded-lg shadow-2xl border-[3px] border-yellow-500 h-fit">
-      
-      {/* Header: Nome e HP */}
-      <div className="flex justify-between items-center px-1 mb-0.5">
-        <h1 className="font-bold text-lg italic text-gray-800 uppercase tracking-tighter">
-          {props.name}
-        </h1>
-        <div className="flex items-center gap-1">
-          <span className="text-[9px] font-black">HP</span>
-          <h1 className="text-lg font-bold text-red-600">70</h1>
-          <div className={`w-4 h-4 rounded-full shadow-sm ${typeColor} border border-black/20`}></div>
-        </div>
-      </div>
-
-      {/* Cornice Immagine: Altezza ridotta per compattezza */}
-      <div className="bg-linear-to-br from-gray-300 via-white to-gray-400 p-1 border-[3px] border-gray-400 shadow-md">
-        <div className="bg-white/40 backdrop-blur-sm overflow-hidden h-40 flex items-center justify-center">
-          <img 
-            src={props.image} 
-            alt={props.name} 
-            className="w-full h-full object-contain drop-shadow-md scale-110"
-          />
-        </div>
-      </div>
-
-      {/* Info Bar Gialla */}
-      <div className="bg-linear-to-r from-yellow-500 via-yellow-200 to-yellow-500 text-[7px] font-bold text-center py-0.5 border-y border-yellow-600 italic">
-        N. {props.id} Pokémon Lucertola Altezza: 0,6m Peso: 8,5kg
-      </div>
-
-      {/* Sezione Inferiore: Ridotta per togliere lo spazio grande */}
-      <div className="mt-0.5 p-2 rounded-sm bg-linear-to-b from-orange-100 to-orange-300 border-t border-orange-400">
-        
-        {/* Attacco 1 */}
-        <div className="flex items-center py-2 border-b border-black/5 gap-2">
-          <div className="flex gap-0.5">
-            <div className={`w-3 h-3 rounded-full ${typeColor}`}></div>
-            <div className="w-3 h-3 rounded-full bg-gray-300"></div>
+    <div className={`w-64 ${cardBg} rounded-2xl p-3 shadow-2xl`} style={{ aspectRatio: "2.5/3.5" }}>
+      {/* Header con sfondo basato sul tipo */}
+      <div className={`${headerGradient} rounded-lg p-3 mb-2`}>
+        <div className="flex justify-between items-start mb-2">
+          <div>
+            <h2 className="text-2xl font-bold text-black">{props.name}</h2>
+            <p className="text-sm text-white">lv.76</p>
           </div>
-          <span className="font-bold text-xs flex-1 italic">Briccone</span>
-          <span className="font-bold text-xs">20x</span>
+          <div className="bg-white rounded-full w-10 h-10 flex items-center justify-center">
+            <span className="text-lg font-bold">{getTypeIcon(primaryType)}</span>
+          </div>
         </div>
-        
-        {/* Descrizione Attacco */}
-        <p className="text-[8px] leading-tight my-2 text-gray-700 font-medium italic">
-          Lancia una moneta. Se esce testa, questo attacco infligge 20 danni per ogni segnalino danno presente su questo Pokémon.
+        <p className="text-xs text-white">
+          NO.{String(props.id).padStart(3, "0")} {primaryType} Pokémon
         </p>
-
-        {/* Info di chiusura (Debolezza/Resistenza) */}
-        <div className="mt-2 pt-1 border-t border-black/10 flex justify-between text-[7px] font-black uppercase">
-          <div className="flex flex-col"><span>Debolezza</span><span className="text-blue-600">水 x2</span></div>
-          <div className="flex flex-col text-center"><span>Resistenza</span><span>-</span></div>
-          <div className="flex flex-col text-right"><span>Ritirata</span><span>**</span></div>
-        </div>
       </div>
 
-      {/* Copyright minuscolo in fondo */}
-      <div className="text-[5px] text-right mt-1 font-bold italic italic pr-1">
-        Illus. Akira Komayama  RC3/RC32 ©2026 Pokémon
+      {/* Immagine */}
+      <div className="bg-gradient-to-b from-orange-300 to-red-400 rounded-lg p-4 mb-2 flex items-center justify-center" style={{ flex: 1 }}>
+        <img
+          src={props.image}
+          alt={props.name}
+          className="w-32 h-32 object-contain"
+        />
+      </div>
+
+      {/* Info sotto immagine */}
+      <div className="bg-yellow-300 rounded p-2 mb-2 text-xs text-black">
+        <p className="font-bold">Ability: {props.types[0]}</p>
+        <p className="text-xxs">Type: {props.types.join(", ")}</p>
+      </div>
+
+      {/* Tipi badge */}
+      <div className="flex justify-center gap-2 pb-2">
+        {props.types.map((type) => (
+          <span
+            key={type}
+            className={`font-bold text-white px-2 py-1 rounded text-xs ${getTypeColor(type)}`}
+          >
+            {type}
+          </span>
+        ))}
       </div>
     </div>
   );
 }
 
 export function Root() {
+  const [cards, setCards] = useState<PokemonCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState<number>(0);
+
+  const loadPage = async (start: number) => {
+    try {
+      const { cards: newCards, total: count } = await fetchData(start);
+      setCards((prev) => [...prev, ...newCards]);
+      setTotal(count);
+    } catch (e: any) {
+      setError(e.message || "Failed to fetch pokemons");
+    }
+  };
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      await loadPage(0);
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleLoadMore = async () => {
+    setLoading(true);
+    const nextOffset = offset + 20;
+    await loadPage(nextOffset);
+    setOffset(nextOffset);
+    setLoading(false);
+  };
+
+  if (loading && cards.length === 0) {
+    return <div className="p-8 text-center">Loading...</div>;
+  }
+  if (error) {
+    return <div className="p-8 text-center text-red-600">Error: {error}</div>;
+  }
+
   return (
-    <div className="p-10 flex justify-center items-start min-h-screen">
-      {/* Solo Charmander */}
-      <Card
-        id={4}
-        image="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/4.png"
-        name="Charmander"
-        types={["fire"]}
-      />
+    <div className="p-4">
+      <div className="grid grid-cols-3 content-start gap-4">
+        {cards.map((c) => (
+          <Card key={c.id} id={c.id} image={c.image} name={c.name} types={c.types} />
+        ))}
+      </div>
+      {cards.length < total && (
+        <div className="flex justify-center mt-4">
+          <button
+            className="px-4 py-2 bg-blue-500 text-white rounded"
+            onClick={handleLoadMore}
+            disabled={loading}
+          >
+            {loading ? "Loading..." : "Load more"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
+function getTypeIcon(type: string): string {
+  const icons: { [key: string]: string } = {
+    fire: "🔥",
+    water: "💧",
+    grass: "🌿",
+    electric: "⚡",
+    psychic: "🧠",
+    ice: "❄️",
+    dragon: "🐉",
+    dark: "⬛",
+    fairy: "✨",
+    normal: "⭕",
+    fighting: "👊",
+    flying: "🦅",
+    poison: "☠️",
+    ground: "🗻",
+    rock: "🪨",
+    bug: "🐛",
+    ghost: "👻",
+    steel: "⚙️",
+  };
+  return icons[type] || "?";
+}
+
+function getCardBackground(type: string): string {
+  // light background for card based on primary type
+  const backgrounds: { [key: string]: string } = {
+    fire: "bg-red-200",
+    water: "bg-blue-200",
+    grass: "bg-green-200",
+    electric: "bg-yellow-200",
+    psychic: "bg-pink-200",
+    ice: "bg-cyan-200",
+    dragon: "bg-purple-200",
+    dark: "bg-gray-200",
+    fairy: "bg-pink-100",
+    normal: "bg-gray-100",
+    fighting: "bg-red-100",
+    flying: "bg-indigo-100",
+    poison: "bg-purple-100",
+    ground: "bg-yellow-300",
+    rock: "bg-yellow-400",
+    bug: "bg-green-300",
+    ghost: "bg-indigo-300",
+    steel: "bg-gray-300",
+  };
+  return backgrounds[type] || "bg-white";
+}
+
+function getHeaderGradient(type: string): string {
+  const gradients: { [key: string]: string } = {
+    fire: "bg-gradient-to-b from-red-500 to-orange-400",
+    water: "bg-gradient-to-b from-blue-500 to-cyan-400",
+    grass: "bg-gradient-to-b from-green-500 to-lime-400",
+    electric: "bg-gradient-to-b from-yellow-400 to-yellow-200",
+    psychic: "bg-gradient-to-b from-pink-500 to-purple-400",
+    ice: "bg-gradient-to-b from-cyan-400 to-blue-300",
+    dragon: "bg-gradient-to-b from-purple-700 to-indigo-500",
+    dark: "bg-gradient-to-b from-gray-700 to-gray-500",
+    fairy: "bg-gradient-to-b from-pink-300 to-pink-100",
+    normal: "bg-gradient-to-b from-gray-400 to-gray-200",
+    fighting: "bg-gradient-to-b from-red-700 to-red-500",
+    flying: "bg-gradient-to-b from-indigo-400 to-blue-300",
+    poison: "bg-gradient-to-b from-purple-500 to-purple-300",
+    ground: "bg-gradient-to-b from-yellow-600 to-yellow-400",
+    rock: "bg-gradient-to-b from-yellow-800 to-yellow-600",
+    bug: "bg-gradient-to-b from-green-700 to-green-500",
+    ghost: "bg-gradient-to-b from-indigo-700 to-indigo-500",
+    steel: "bg-gradient-to-b from-gray-500 to-gray-300",
+  };
+  return gradients[type] || "bg-gradient-to-b from-gray-200 to-gray-100";
+}
+
 function getTypeColor(type: string): string {
-  return typeColors[type] || "bg-gray-400";
+  return typeColors[type];
 }
 
 const typeColors: { [key: string]: string } = {
@@ -97,5 +206,46 @@ const typeColors: { [key: string]: string } = {
   water: "bg-blue-500",
   grass: "bg-green-500",
   electric: "bg-yellow-400",
-  // Aggiungi gli altri se servono
+  psychic: "bg-pink-500",
+  ice: "bg-cyan-400",
+  dragon: "bg-purple-700",
+  dark: "bg-gray-700",
+  fairy: "bg-pink-300",
+  normal: "bg-gray-400",
+  fighting: "bg-red-700",
+  flying: "bg-indigo-400",
+  poison: "bg-purple-500",
+  ground: "bg-yellow-600",
+  rock: "bg-yellow-800",
+  bug: "bg-green-700",
+  ghost: "bg-indigo-700",
+  steel: "bg-gray-500",
 };
+
+interface PokemonCard {
+  id: number;
+  image: string;
+  name: string;
+  types: string[];
+}
+
+async function fetchData(offset: number): Promise<{ cards: PokemonCard[]; total: number }> {
+  // retrieve a page of pokemons along with overall count
+  const pageSize = 20;
+  const list = await PokeAPI.listPokemons(offset, pageSize);
+  const pokemons = await Promise.all(
+    list.results.map(async (item: { name: string; url: string }) => {
+      const pokemon = await PokeAPI.getPokemonByName(item.name);
+      return pokemon;
+    }),
+  );
+
+  const cards = pokemons.map((item) => ({
+    id: item.id,
+    image: item.sprites.other?.["official-artwork"].front_default ?? "",
+    name: item.name,
+    types: item.types.map((type) => type.type.name),
+  }));
+
+  return { cards, total: list.count };
+}
